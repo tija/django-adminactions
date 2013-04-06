@@ -29,6 +29,7 @@ from django.utils import formats
 from django.utils import dateformat
 import django.core.serializers as ser
 import cStringIO as StringIO
+import gc
 
 
 delimiters = ",;|:"
@@ -56,7 +57,28 @@ class CSVOptions(forms.Form):
     date_format = forms.CharField(initial=formats.get_format('DATE_FORMAT'))
     time_format = forms.CharField(initial=formats.get_format('TIME_FORMAT'))
     columns = forms.MultipleChoiceField(widget=SelectMultiple(attrs={'size': 20}))
+    
 
+def queryset_iterator(queryset, chunksize=1000):
+    '''''
+    Iterate over a Django Queryset ordered by the primary key
+
+    This method loads a maximum of chunksize (default: 1000) rows in it's
+    memory at the same time while django normally would load all rows in it's
+    memory. Using the iterator() method only causes it to not preload all the
+    classes.
+
+    Note that the implementation of the iterator does not support ordered query sets.
+    '''
+    if queryset.exists():
+        pk = 0
+        last_pk = queryset.order_by('-pk')[0].pk
+        queryset = queryset.order_by('pk')
+        while pk < last_pk:
+            for row in queryset.filter(pk__gt=pk)[:chunksize]:
+                pk = row.pk
+                yield row
+            gc.collect()
 
 def export_as_csv(modeladmin, request, queryset):
     """
@@ -128,7 +150,7 @@ def export_as_csv(modeladmin, request, queryset):
                 return data
 
             def data():
-                for obj in queryset:
+                for obj in queryset_iterator(queryset):
                     row = []
                     for fieldname in form.cleaned_data['columns']:
                         value = get_field_value(obj, fieldname)
