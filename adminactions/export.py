@@ -63,33 +63,6 @@ def export_as_csv(modeladmin, request, queryset):
         export a queryset to csv file
     """
 
-    def data():
-
-        header_added = False
-        for obj in queryset:
-            csvfile = StringIO.StringIO()
-            writer = csv.writer(csvfile,
-                                escapechar=str(form.cleaned_data['escapechar']),
-                                delimiter=str(form.cleaned_data['delimiter']),
-                                quotechar=str(form.cleaned_data['quotechar']),
-                                quoting=int(form.cleaned_data['quoting']))
-            if form.cleaned_data.get('header', False) and not header_added:
-                writer.writerow([f for f in form.cleaned_data['columns']])
-                header_added = True
-
-            row = []
-            for fieldname in form.cleaned_data['columns']:
-                value = get_field_value(obj, fieldname)
-                if isinstance(value, datetime.datetime):
-                    value = dateformat.format(value, form.cleaned_data['datetime_format'])
-                elif isinstance(value, datetime.date):
-                    value = dateformat.format(value, form.cleaned_data['date_format'])
-                elif isinstance(value, datetime.time):
-                    value = dateformat.format(value, form.cleaned_data['time_format'])
-                row.append(smart_str(value))
-            writer.writerow(row)
-            yield csvfile.getvalue()
-
     if not request.user.has_perm('adminactions.export'):
         messages.error(request, _('Sorry you do not have rights to execute this action'))
         return
@@ -134,6 +107,41 @@ def export_as_csv(modeladmin, request, queryset):
                 filename = modeladmin.get_export_as_csv_filename(request, queryset)
             else:
                 filename = "%s.csv" % queryset.model._meta.verbose_name_plural.lower().replace(" ", "_")
+
+            # Build and export the csv file
+            csvfile = StringIO.StringIO()
+            writer = csv.writer(csvfile,
+                                escapechar=str(form.cleaned_data['escapechar']),
+                                delimiter=str(form.cleaned_data['delimiter']),
+                                quotechar=str(form.cleaned_data['quotechar']),
+                                quoting=int(form.cleaned_data['quoting']))
+
+            if form.cleaned_data.get('header', False):
+                writer.writerow([f for f in form.cleaned_data['columns']])
+
+
+            def read_and_flush():
+                csvfile.seek(0)
+                data = csvfile.read()
+                csvfile.seek(0)
+                csvfile.truncate()
+                return data
+
+            def data():
+                for obj in queryset:
+                    row = []
+                    for fieldname in form.cleaned_data['columns']:
+                        value = get_field_value(obj, fieldname)
+                        if isinstance(value, datetime.datetime):
+                            value = dateformat.format(value, form.cleaned_data['datetime_format'])
+                        elif isinstance(value, datetime.date):
+                            value = dateformat.format(value, form.cleaned_data['date_format'])
+                        elif isinstance(value, datetime.time):
+                            value = dateformat.format(value, form.cleaned_data['time_format'])
+                        row.append(smart_str(value))
+                    writer.writerow(row)
+                    data = read_and_flush()
+                    yield data
 
             try:
                 response = HttpResponse(data(), mimetype='text/csv')
