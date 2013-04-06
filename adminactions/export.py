@@ -64,15 +64,19 @@ def export_as_csv(modeladmin, request, queryset):
     """
 
     def data():
-        csvfile = StringIO.StringIO()
-        writer = csv.writer(csvfile,
-                            escapechar=str(form.cleaned_data['escapechar']),
-                            delimiter=str(form.cleaned_data['delimiter']),
-                            quotechar=str(form.cleaned_data['quotechar']),
-                            quoting=int(form.cleaned_data['quoting']))
-        if form.cleaned_data.get('header', False):
-            writer.writerow([f for f in form.cleaned_data['columns']])
+
+        header_added = False
         for obj in queryset:
+            csvfile = StringIO.StringIO()
+            writer = csv.writer(csvfile,
+                                escapechar=str(form.cleaned_data['escapechar']),
+                                delimiter=str(form.cleaned_data['delimiter']),
+                                quotechar=str(form.cleaned_data['quotechar']),
+                                quoting=int(form.cleaned_data['quoting']))
+            if form.cleaned_data.get('header', False) and not header_added:
+                writer.writerow([f for f in form.cleaned_data['columns']])
+                header_added = True
+
             row = []
             for fieldname in form.cleaned_data['columns']:
                 value = get_field_value(obj, fieldname)
@@ -163,7 +167,6 @@ def export_as_csv(modeladmin, request, queryset):
            'app_label': queryset.model._meta.app_label,
            'media': mark_safe(media)}
     return render_to_response(tpl, RequestContext(request, ctx))
-
 
 export_as_csv.short_description = "Export as CSV"
 
