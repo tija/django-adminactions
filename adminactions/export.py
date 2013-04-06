@@ -43,7 +43,7 @@ class CSVOptions(forms.Form):
                                        widget=forms.HiddenInput({'class': 'select-across'}))
     action = forms.CharField(label='', required=True, initial='', widget=forms.HiddenInput())
 
-    header = forms.BooleanField(required=False)
+    header = forms.BooleanField(required=False, initial=True)
     delimiter = forms.ChoiceField(choices=zip(delimiters, delimiters))
     quotechar = forms.ChoiceField(choices=zip(quotes, quotes))
     quoting = forms.ChoiceField(
@@ -108,7 +108,7 @@ def export_as_csv(modeladmin, request, queryset):
                'quotechar': '"',
                'columns': [x for x, v in cols],
                'quoting': csv.QUOTE_ALL,
-               'delimiter': ';',
+               'delimiter': ',',
                'escapechar': '\\', }
 
     if 'apply' in request.POST:
