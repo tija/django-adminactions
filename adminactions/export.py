@@ -28,6 +28,7 @@ from django.contrib.admin import helpers
 from django.utils import formats
 from django.utils import dateformat
 import django.core.serializers as ser
+import cStringIO as StringIO
 
 
 delimiters = ",;|:"
@@ -61,6 +62,30 @@ def export_as_csv(modeladmin, request, queryset):
     """
         export a queryset to csv file
     """
+
+    def data():
+        csvfile = StringIO.StringIO()
+        writer = csv.writer(csvfile,
+                            escapechar=str(form.cleaned_data['escapechar']),
+                            delimiter=str(form.cleaned_data['delimiter']),
+                            quotechar=str(form.cleaned_data['quotechar']),
+                            quoting=int(form.cleaned_data['quoting']))
+        if form.cleaned_data.get('header', False):
+            writer.writerow([f for f in form.cleaned_data['columns']])
+        for obj in queryset:
+            row = []
+            for fieldname in form.cleaned_data['columns']:
+                value = get_field_value(obj, fieldname)
+                if isinstance(value, datetime.datetime):
+                    value = dateformat.format(value, form.cleaned_data['datetime_format'])
+                elif isinstance(value, datetime.date):
+                    value = dateformat.format(value, form.cleaned_data['date_format'])
+                elif isinstance(value, datetime.time):
+                    value = dateformat.format(value, form.cleaned_data['time_format'])
+                row.append(smart_str(value))
+            writer.writerow(row)
+            yield csvfile.getvalue()
+
     if not request.user.has_perm('adminactions.export'):
         messages.error(request, _('Sorry you do not have rights to execute this action'))
         return
@@ -99,39 +124,25 @@ def export_as_csv(modeladmin, request, queryset):
                                        form=form)
             except ActionInterrupted as e:
                 messages.error(request, str(e))
-                return
+                # return
 
             if hasattr(modeladmin, 'get_export_as_csv_filename'):
                 filename = modeladmin.get_export_as_csv_filename(request, queryset)
             else:
                 filename = "%s.csv" % queryset.model._meta.verbose_name_plural.lower().replace(" ", "_")
-            response = HttpResponse(mimetype='text/csv')
-            response['Content-Disposition'] = 'attachment;filename="%s"' % filename.encode('us-ascii', 'replace')
+
             try:
-                writer = csv.writer(response,
-                                    escapechar=str(form.cleaned_data['escapechar']),
-                                    delimiter=str(form.cleaned_data['delimiter']),
-                                    quotechar=str(form.cleaned_data['quotechar']),
-                                    quoting=int(form.cleaned_data['quoting']))
-                if form.cleaned_data.get('header', False):
-                    writer.writerow([f for f in form.cleaned_data['columns']])
-                for obj in queryset:
-                    row = []
-                    for fieldname in form.cleaned_data['columns']:
-                        value = get_field_value(obj, fieldname)
-                        if isinstance(value, datetime.datetime):
-                            value = dateformat.format(value, form.cleaned_data['datetime_format'])
-                        elif isinstance(value, datetime.date):
-                            value = dateformat.format(value, form.cleaned_data['date_format'])
-                        elif isinstance(value, datetime.time):
-                            value = dateformat.format(value, form.cleaned_data['time_format'])
-                        row.append(smart_str(value))
-                    writer.writerow(row)
+                response = HttpResponse(data(), mimetype='text/csv')
+                response['Content-Disposition'] = 'attachment;filename="%s"' % filename.encode('us-ascii', 'replace')
+                response.streaming = True
+
             except Exception as e:
                 messages.error(request, "Error: (%s)" % str(e))
             else:
                 adminaction_end.send(sender=modeladmin.model, action='export_as_csv', request=request, queryset=queryset)
                 return response
+
+
     else:
         form = CSVOptions(initial=initial)
         form.fields['columns'].choices = cols
