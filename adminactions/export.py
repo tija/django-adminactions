@@ -141,8 +141,8 @@ def export_as_csv(modeladmin, request, queryset):
                         row.append(smart_str(value))
                     writer.writerow(row)
                     data = read_and_flush()
-                    import time
-                    time.sleep(1)
+                    #import time
+                    #time.sleep(1)
                     yield data
 
             try:
